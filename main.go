@@ -25,11 +25,16 @@ import (
 type Block struct {
 	Index        int
 	Timestamp    string
-	BPM          int
+	Document     Document
 	Hash         string
 	PrevHash     string
 	IPFSHash     string
 	PrevIPFSHash string
+}
+
+type Document struct {
+	Title    string
+	IPFSHash string
 }
 
 var (
@@ -39,11 +44,6 @@ var (
 	mutex      = &sync.Mutex{}
 	ipfsTopic  = "aleksen/pubsubchain"
 )
-
-// Message takes incoming JSON payload for writing heart rate
-type Message struct {
-	BPM int
-}
 
 func main() {
 	err := godotenv.Load()
@@ -115,7 +115,7 @@ func handleGetBlockchain(w http.ResponseWriter, r *http.Request) {
 // takes JSON payload as an input for heart rate (BPM)
 func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	var msg Message
+	var msg Document
 
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&msg); err != nil {
@@ -130,7 +130,7 @@ func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
 		prevBlock = &Blockchain[len(Blockchain)-1]
 
 	}
-	newBlock, err := generateBlock(prevBlock, msg.BPM)
+	newBlock, err := generateBlock(prevBlock, msg)
 	if err != nil {
 		respondWithJSON(w, r, http.StatusInternalServerError, err.Error())
 		return
@@ -175,7 +175,7 @@ func isBlockValid(newBlock, oldBlock Block) bool {
 
 // SHA256 hasing
 func calculateHash(block Block) string {
-	record := strconv.Itoa(block.Index) + block.Timestamp + strconv.Itoa(block.BPM) + block.PrevHash
+	record := strconv.Itoa(block.Index) + block.Timestamp + block.Document.Title + block.Document.IPFSHash + block.PrevHash
 	h := sha256.New()
 	h.Write([]byte(record))
 	hashed := h.Sum(nil)
@@ -183,7 +183,7 @@ func calculateHash(block Block) string {
 }
 
 // create a new block using previous block's hash
-func generateBlock(oldBlock *Block, BPM int) (Block, error) {
+func generateBlock(oldBlock *Block, document Document) (Block, error) {
 
 	var newBlock Block
 
@@ -195,7 +195,7 @@ func generateBlock(oldBlock *Block, BPM int) (Block, error) {
 		newBlock.PrevIPFSHash = oldBlock.IPFSHash
 	}
 	newBlock.Timestamp = t.String()
-	newBlock.BPM = BPM
+	newBlock.Document = document
 	newBlock.Hash = calculateHash(newBlock)
 	data, err := json.Marshal(newBlock)
 	if err != nil {
